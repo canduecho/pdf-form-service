@@ -93,28 +93,135 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 ### 1. 解析 PDF 表单字段
 
-```http
-POST /api/parse-form
-Content-Type: multipart/form-data
+**接口地址**: `POST /api/v1/parse-form`
 
-file: <PDF文件>
+**请求格式**: `multipart/form-data`
+
+**参数**:
+- `file`: PDF 文件
+
+**示例**:
+```bash
+curl --location 'http://{ip}:8000/api/v1/parse-form' \
+--header 'Content-Type: application/json' \
+--form 'file=@"/D:/Doc/pdf-form/EDIT OoPdfFormExample.pdf"'
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "message": "PDF表单解析成功",
+  "fields": [
+    {
+      "name": "Given Name Text Box",
+      "label": null,
+      "type": "text",
+      "value": "",
+      "options": null,
+      "button_info": null,
+      "attributes": {
+        "max_length": 40
+      },
+      "page": 1,
+      "position": {
+        "x": 165.7,
+        "y": 453.7,
+        "width": 150.0,
+        "height": 14.2
+      },
+      "required": false
+    }
+  ],
+  "field_count": 17
+}
 ```
 
 ### 2. 填充 PDF 表单
 
-```http
-POST /api/fill-form
-Content-Type: multipart/form-data
+**接口地址**: `POST /api/v1/fill-form`
 
-file: <PDF文件>
-fields: <JSON格式的字段数据>
+**请求格式**: `multipart/form-data`
+
+**参数**:
+- `file`: 原始 PDF 表单文件
+- `form_data`: JSON 格式的字段数据
+
+**示例**:
+```bash
+curl --location 'http://{ip}:8000/api/v1/fill-form' \
+--header 'accept: application/pdf' \
+--form 'file=@"/D:/Doc/pdf-form/Form.pdf"' \
+--form 'form_data="{\"fields\":[{\"name\":\"FullName\",\"value\":\"张三\"},{\"name\":\"ID\",\"value\":\"110101199001011234\"},{\"name\":\"Gender\",\"value\":\"1\"},{\"name\":\"Married\",\"value\":\"Yes\"},{\"name\":\"City\",\"value\":\"New York\"},{\"name\":\"Language\",\"value\":\"English\"},{\"name\":\"Notes\",\"value\":\"这是一个测试填写的内容\"}]}"'
 ```
 
-### 3. 创建示例表单
+**响应**: 返回填充后的 PDF 文件
 
-```http
-GET /api/create-sample
+### 3. 使用 fillpdf 库解析表单字段
+
+**接口地址**: `POST /api/v1/parse-form-fillpdf`
+
+**请求格式**: `multipart/form-data`
+
+**参数**:
+- `file`: PDF 文件
+
+**说明**: 使用 fillpdf 库解析字段，返回简化的字段信息
+
+### 4. 创建示例表单
+
+**接口地址**: `GET /api/v1/parse-form-sample`
+
+**说明**: 创建并解析示例 PDF 表单字段
+
+### 5. 健康检查
+
+**接口地址**: `GET /health`
+
+**响应示例**:
+```json
+{
+  "status": "healthy",
+  "service": "pdf-form-service"
+}
 ```
+
+## 使用说明
+
+### 基本使用流程
+
+1. **解析表单字段**: 首先调用解析接口获取 PDF 表单中的所有字段信息
+2. **准备字段数据**: 根据解析结果准备要填充的字段数据
+3. **填充表单**: 调用填充接口将数据写入 PDF 表单
+
+### 字段数据格式
+
+填充表单时，`form_data` 参数需要包含以下格式的 JSON 数据：
+
+```json
+{
+  "fields": [
+    {
+      "name": "字段名称",
+      "value": "字段值"
+    }
+  ]
+}
+```
+
+### 字段类型说明
+
+- **文本字段**: 直接填写文本值
+- **复选框**: 使用 "Yes"/"No" 或 "On"/"Off"
+- **选择框**: 填写选项值
+- **单选按钮**: 填写选项值
+
+### 注意事项
+
+1. 字段名称必须与 PDF 表单中的字段名称完全匹配
+2. 建议先调用解析接口获取准确的字段名称
+3. 文件大小限制为 50MB
+4. 只支持 PDF 格式文件
 
 ## 配置说明
 
@@ -131,7 +238,7 @@ GET /api/create-sample
 | MAX_FILE_SIZE | 50 | 最大文件大小 (MB) |
 | LOG_LEVEL | INFO | 日志级别 |
 | LOG_FILE | logs/app.log | 日志文件路径 |
-| SECRET_KEY | - | 安全密钥 |
+
 
 ### 安全注意事项
 

@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  pdf-form-service:
+    build: .
+    container_name: pdf-form-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - UPLOAD_DIR=uploads
+      - OUTPUT_DIR=outputs
+      - TEMP_DIR=temp
+      - MAX_FILE_SIZE=50
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=your-secret-key-here-change-this-in-production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 

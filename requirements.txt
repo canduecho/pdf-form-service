@@ -1,0 +1,9 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+PyPDF2==3.0.1
+reportlab==4.0.7
+python-dotenv==1.0.0
+loguru==0.7.2
+aiofiles==23.2.1
+fillpdf==0.7.3 

@@ -278,6 +278,12 @@ pdf-form-service/
 
 日志文件位于 `logs/app.log`，可以通过 `LOG_LEVEL` 环境变量控制日志级别。
 
+## 相关文档
+
+- [API 详细文档](./API_DOCUMENTATION.md) - 完整的 API 输入输出格式说明
+- [API Documentation (English)](./API_DOCUMENTATION_EN.md) - Complete API documentation in English
+- [CURL 示例](./API_CURL_EXAMPLES.md) - 详细的 CURL 调用示例
+
 ## 许可证
 
 MIT License 

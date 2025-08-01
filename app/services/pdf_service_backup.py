@@ -186,27 +186,15 @@ class PDFService:
           field_attributes['flag_meanings'] = self._parse_field_flags(flags_int)
       
       # 获取选项（对于选择框和单选按钮）
-      options = None
-      if field_type in ['select', 'radio', 'checkbox'] and '/Opt' in field_obj:
+      options = []
+      if field_type in ['select', 'radio', 'checkbox', 'listbox'] and '/Opt' in field_obj:
         opt = field_obj['/Opt']
         if isinstance(opt, list):
-          options = []
-          if field_type in ['select', 'listbox']:
-            # 下拉框/列表框：text 和 value 都是选项文本
-            for option in opt:
-              text = option.decode('utf-8', errors='ignore') if isinstance(option, bytes) else str(option)
-              options.append({'text': text, 'value': text})
-          elif field_type == 'radio':
-            # 单选组：text 是选项文本，value 是索引
-            for idx, option in enumerate(opt):
-              text = option.decode('utf-8', errors='ignore') if isinstance(option, bytes) else str(option)
-              options.append({'text': text, 'value': str(idx)})
-          elif field_type == 'checkbox':
-            # 复选框：固定选项
-            options = [
-              {'text': '选中', 'value': 'Yes'},
-              {'text': '未选中', 'value': 'Off'}
-            ]
+          for option in opt:
+            if isinstance(option, bytes):
+              options.append(option.decode('utf-8', errors='ignore'))
+            else:
+              options.append(str(option))
       
       # 获取按钮信息（对于按钮类型）
       button_info = None
@@ -397,27 +385,15 @@ class PDFService:
           field_attributes['flag_meanings'] = self._parse_field_flags(flags_int)
       
       # 获取选项（对于选择框和单选按钮）
-      options = None
+      options = []
       if field_type in ['select', 'radio', 'checkbox'] and '/Opt' in obj:
         opt = obj['/Opt']
         if isinstance(opt, list):
-          options = []
-          if field_type in ['select', 'listbox']:
-            # 下拉框/列表框：text 和 value 都是选项文本
-            for option in opt:
-              text = option.decode('utf-8', errors='ignore') if isinstance(option, bytes) else str(option)
-              options.append({'text': text, 'value': text})
-          elif field_type == 'radio':
-            # 单选组：text 是选项文本，value 是索引
-            for idx, option in enumerate(opt):
-              text = option.decode('utf-8', errors='ignore') if isinstance(option, bytes) else str(option)
-              options.append({'text': text, 'value': str(idx)})
-          elif field_type == 'checkbox':
-            # 复选框：固定选项
-            options = [
-              {'text': '选中', 'value': 'Yes'},
-              {'text': '未选中', 'value': 'Off'}
-            ]
+          for option in opt:
+            if isinstance(option, bytes):
+              options.append(option.decode('utf-8', errors='ignore'))
+            else:
+              options.append(str(option))
       
       # 获取按钮信息（对于按钮类型）
       button_info = None
@@ -807,3 +783,92 @@ class PDFService:
     line = line.replace('（必选/Required）', '').replace('(必选/Required)', '')
     
     return line
+  
+            return 'button'
+          else:
+            return 'checkbox'
+        else:
+          return 'checkbox'
+      elif ft == '/Ch':
+        # 检查是否为下拉选择框
+        if '/Ff' in obj:
+          ff = obj['/Ff']
+          if ff & 131072:  # Combo box flag
+            return 'select'
+          else:
+            return 'listbox'
+        else:
+          return 'select'
+      elif ft == '/Tx':
+        return 'text'
+    
+    return 'text'
+    
+    Returns:
+      示例PDF文件路径
+    """
+    try:
+      # 创建临时文件
+      temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+      temp_path = temp_file.name
+      temp_file.close()
+      
+      # 创建PDF
+      c = canvas.Canvas(temp_path, pagesize=letter)
+      width, height = letter
+      
+      # 添加标题
+      c.setFont('Helvetica-Bold', 16)
+      c.drawString(50, height - 50, 'PDF Form Example')
+      
+      # 添加说明文字
+      c.setFont('Helvetica', 10)
+      c.drawString(50, height - 80, 'This is a user-fillable PDF form, created with OpenOffice (version 3.4.0).')
+      c.drawString(50, height - 95, 'Important fields are marked yellow.')
+      
+      # 添加表单字段
+      c.setFont('Helvetica', 12)
+      y_position = height - 130
+      
+      # 文本字段
+      text_fields = [
+        ('Given Name', 50, y_position),
+        ('Family Name', 50, y_position - 30),
+        ('Address 1', 50, y_position - 60),
+        ('House nr', 250, y_position - 60),
+        ('Address 2', 50, y_position - 90),
+        ('Postcode', 50, y_position - 120),
+        ('City', 150, y_position - 120),
+        ('Country', 50, y_position - 150),
+        ('Gender', 50, y_position - 180),
+        ('Height (cm)', 50, y_position - 210)
+      ]
+      
+      for label, x, y in text_fields:
+        c.drawString(x, y, f'{label}:')
+        # 绘制文本框
+        c.rect(x + 80, y - 15, 150, 20)
+      
+      # 复选框
+      c.drawString(50, y_position - 240, 'Driving License:')
+      c.rect(150, y_position - 255, 15, 15)  # 复选框
+      
+      c.save()
+      
+      # 移动到输出目录
+      output_filename = f'sample_form_{uuid.uuid4().hex}.pdf'
+      output_path = os.path.join(settings.OUTPUT_DIR, output_filename)
+      
+      # 复制文件
+      with open(temp_path, 'rb') as src, open(output_path, 'wb') as dst:
+        dst.write(src.read())
+      
+      # 删除临时文件
+      os.unlink(temp_path)
+      
+      logger.info(f'创建示例表单: {output_path}')
+      return output_path
+      
+    except Exception as e:
+      logger.error(f'创建示例表单失败: {str(e)}')
+      raise Exception(f'创建示例表单失败: {str(e)}') 

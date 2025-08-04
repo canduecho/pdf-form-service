@@ -167,6 +167,12 @@ class PDFService:
       field_value = field_obj.get('/V', '')
       if isinstance(field_value, bytes):
         field_value = field_value.decode('utf-8', errors='ignore')
+      # 处理复选框和单选按钮的值：去掉开头的 "/"
+      if field_type in ['checkbox', 'radio'] and isinstance(field_value, str) and field_value.startswith('/'):
+        field_value = field_value[1:]
+      # 处理复选框和单选按钮的值：将 "On" 转换为 "Yes"
+      if field_type in ['checkbox', 'radio'] and isinstance(field_value, str) and field_value == 'On':
+        field_value = 'Yes'
       
       # 获取字段属性
       field_attributes = {}
@@ -378,6 +384,12 @@ class PDFService:
       field_value = obj.get('/V', '')
       if isinstance(field_value, bytes):
         field_value = field_value.decode('utf-8', errors='ignore')
+      # 处理复选框和单选按钮的值：去掉开头的 "/"
+      if field_type in ['checkbox', 'radio'] and isinstance(field_value, str) and field_value.startswith('/'):
+        field_value = field_value[1:]
+      # 处理复选框和单选按钮的值：将 "On" 转换为 "Yes"
+      if field_type in ['checkbox', 'radio'] and isinstance(field_value, str) and field_value == 'On':
+        field_value = 'Yes'
       
       # 获取字段属性
       field_attributes = {}

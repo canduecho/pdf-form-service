@@ -9,15 +9,20 @@ from loguru import logger
 import uvicorn
 
 # 添加项目路径
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 from app.services.pdf_service import PDFService
 from app.services.pdf_service_fillpdf import PDFServiceFillPDF
+from app.services.pdf_service_pypdf import PDFServicePyPDF
+from app.services.pdf_service_enhanced_fillpdf import PDFServiceEnhancedFillPDF
 from app.utils.config import settings
 
 # 创建服务实例
-pdf_service = PDFService()  # 用于解析表单字段
-pdf_service_fillpdf = PDFServiceFillPDF()  # 用于填充表单
+pdf_service = PDFService()  # 原有的增强解析服务
+pdf_service_fillpdf = PDFServiceFillPDF()  # 原始fillpdf库服务
+pdf_service_pypdf = PDFServicePyPDF()  # 标准PyPDF2服务
+pdf_service_enhanced_fillpdf = PDFServiceEnhancedFillPDF()  # 增强版fillpdf服务
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -63,31 +68,53 @@ async def health_check():
   return {'status': 'healthy'}
 
 @app.post('/api/v1/parse-form')
-async def parse_pdf_form(file: UploadFile = File(...)):
+async def parse_pdf_form(
+  file: UploadFile = File(...),
+  engine: str = Form("enhanced_fillpdf")
+):
   """
   解析PDF表单字段
   
   Args:
     file: 上传的PDF文件
+    engine: 解析引擎选择，可选值：
+      - "standard": 使用标准PyPDF2方法（推荐，兼容性最好）
+      - "enhanced": 使用增强解析引擎（支持文本识别）
+      - "fillpdf": 使用原始fillpdf库解析
+      - "enhanced_fillpdf": 使用增强版fillpdf库解析（支持子字段）
     
   Returns:
     JSON格式的字段列表
   """
   try:
-    logger.info(f'开始解析PDF表单: {file.filename}')
+    logger.info(f'开始解析PDF表单: {file.filename}, 引擎: {engine}')
     
     # 验证文件类型
     if not file.filename or not file.filename.lower().endswith('.pdf'):
       raise HTTPException(status_code=400, detail='只支持PDF文件')
     
-    # 解析PDF表单字段
-    fields = await pdf_service.parse_form_fields(file)
+    # 选择解析引擎
+    if engine == "standard":
+      logger.info('使用标准PyPDF2引擎解析表单')
+      fields = await pdf_service_pypdf.parse_form_fields(file)
+    elif engine == "enhanced": 
+      logger.info('使用增强引擎解析表单')
+      fields = await pdf_service.parse_form_fields(file)
+    elif engine == "fillpdf":
+      logger.info('使用原始fillpdf引擎解析表单')
+      fields = await pdf_service_fillpdf.parse_form_fields(file)
+    elif engine == "enhanced_fillpdf":
+      logger.info('使用增强版fillpdf引擎解析表单（支持子字段）')
+      fields = await pdf_service_enhanced_fillpdf.parse_form_fields(file)
+    else:
+      raise HTTPException(status_code=400, detail=f'不支持的引擎类型: {engine}')
     
     logger.info(f'PDF表单解析完成，发现 {len(fields)} 个字段')
     
     return {
       'success': True,
-      'message': 'PDF表单解析成功',
+      'message': f'PDF表单解析成功 (引擎: {engine})',
+      'engine': engine,
       'fields': fields,
       'field_count': len(fields)
     }
@@ -100,7 +127,8 @@ async def parse_pdf_form(file: UploadFile = File(...)):
 async def fill_pdf_form(
   form_data: str = Form(...),
   file: UploadFile = File(...),
-  strict_validation: bool = Form(True)
+  strict_validation: bool = Form(True),
+  engine: str = Form("enhanced_fillpdf")
 ):
   """
   填充PDF表单
@@ -109,12 +137,17 @@ async def fill_pdf_form(
     file: 原始PDF表单文件
     form_data: 表单数据，包含字段名和值的映射
     strict_validation: 是否严格验证字段选项，默认为 True
+    engine: 填充引擎选择，可选值：
+      - "standard": 使用标准PyPDF2方法（推荐，兼容性最好）
+      - "enhanced": 使用增强引擎（支持子字段处理）  
+      - "fillpdf": 使用原始fillpdf库（传统方法）
+      - "enhanced_fillpdf": 使用增强版fillpdf库（支持所有字段类型和子字段）
     
   Returns:
     填充后的PDF文件
   """
   try:
-    logger.info(f'开始填充PDF表单: {file.filename}')
+    logger.info(f'开始填充PDF表单: {file.filename}, 引擎: {engine}')
     
     # 验证文件类型
     if not file.filename or not file.filename.lower().endswith('.pdf'):
@@ -130,8 +163,25 @@ async def fill_pdf_form(
     # 转换字段数据格式
     fields_data = form_data_obj['fields']
     
-    # 填充PDF表单 - 使用PDFServiceFillPDF进行填充
-    output_path = await pdf_service_fillpdf.fill_form(file, fields_data, strict_validation)
+    # 选择填充引擎
+    if engine == "standard":
+      # 使用标准PyPDF2方法 - 兼容性最好（推荐）
+      logger.info('使用标准PyPDF2引擎填充表单（兼容性最好）')
+      output_path = await pdf_service_pypdf.fill_form(file, fields_data, strict_validation)
+    elif engine == "enhanced":
+      # 使用增强型引擎 - 支持多种字段类型和子字段
+      logger.info('使用增强引擎填充表单（支持子字段处理）')
+      output_path = await pdf_service.fill_form(file, fields_data, strict_validation)
+    elif engine == "fillpdf":
+      # 使用原始 fillpdf 引擎 - 传统选项
+      logger.info('使用原始fillpdf引擎填充表单（传统模式）')
+      output_path = await pdf_service_fillpdf.fill_form(file, fields_data, strict_validation)
+    elif engine == "enhanced_fillpdf":
+      # 使用增强版 fillpdf 引擎 - 支持所有字段类型和子字段
+      logger.info('使用增强版fillpdf引擎填充表单（支持所有字段类型和子字段）')
+      output_path = await pdf_service_enhanced_fillpdf.fill_form(file, fields_data, strict_validation)
+    else:
+      raise HTTPException(status_code=400, detail=f'不支持的引擎类型: {engine}')
     
     logger.info(f'PDF表单填充完成: {output_path}')
     
@@ -229,7 +279,7 @@ if __name__ == '__main__':
   uvicorn.run(
     'app.main:app',
     host='0.0.0.0',
-    port=8001,
+    port=settings.PORT,
     reload=True,
     log_level='info'
   )

@@ -31,94 +31,86 @@ class PDFServiceFillPDF:
   
   async def parse_form_fields(self, file: UploadFile) -> List[Dict[str, Any]]:
     """
-    解析PDF表单字段，包含 option_text 和 option_value
+    使用fillpdf库解析PDF表单字段
     """
-    import PyPDF2
-    from io import BytesIO
     try:
+      # 保存上传的文件到临时位置
+      temp_input_path = os.path.join(settings.TEMP_DIR, f'parse_{uuid.uuid4().hex}_{file.filename}')
       content = await file.read()
-      pdf_reader = PyPDF2.PdfReader(BytesIO(content))
+      
+      with open(temp_input_path, 'wb') as f:
+        f.write(content)
+      
+      # 使用fillpdf库的get_form_fields函数
+      import fillpdf.fillpdfs as fillpdfs
+      fillpdf_fields = fillpdfs.get_form_fields(temp_input_path)
+      
+      logger.info(f'fillpdf库解析到 {len(fillpdf_fields)} 个字段: {list(fillpdf_fields.keys())}')
+      
+      # 转换为标准格式
       fields = []
-      if pdf_reader.trailer and '/Root' in pdf_reader.trailer:
-        root = pdf_reader.trailer['/Root'].get_object()
-        if root and '/AcroForm' in root:
-          acro_form = root['/AcroForm'].get_object()
-          if acro_form and '/Fields' in acro_form:
-            form_fields = acro_form['/Fields']
-            for field_ref in form_fields:
-              field_obj = field_ref.get_object()
-              # 字段名
-              field_name = field_obj.get('/T', '')
-              if isinstance(field_name, bytes):
-                field_name = field_name.decode('utf-8', errors='ignore')
-              # 字段类型
-              field_type = 'text'
-              if '/FT' in field_obj:
-                ft = field_obj['/FT']
-                if ft == '/Btn':
-                  if '/Ff' in field_obj:
-                    ff = field_obj['/Ff']
-                    if ff & 32768:
-                      field_type = 'radio'
-                    elif ff & 65536:
-                      field_type = 'button'
-                    else:
-                      field_type = 'checkbox'
-                  else:
-                    field_type = 'checkbox'
-                elif ft == '/Ch':
-                  if '/Ff' in field_obj:
-                    ff = field_obj['/Ff']
-                    if ff & 131072:
-                      field_type = 'select'
-                    else:
-                      field_type = 'listbox'
-                  else:
-                    field_type = 'select'
-                elif ft == '/Tx':
-                  field_type = 'text'
-              # 选项
-              options = None
-              if field_type in ['select', 'listbox'] and '/Opt' in field_obj:
-                opt = field_obj['/Opt']
-                options = []
-                if isinstance(opt, list):
-                  for o in opt:
-                    text = o.decode('utf-8', errors='ignore') if isinstance(o, bytes) else str(o)
-                    options.append({'text': text, 'value': text})
-              elif field_type == 'radio' and '/Opt' in field_obj:
-                opt = field_obj['/Opt']
-                options = []
-                if isinstance(opt, list):
-                  for idx, o in enumerate(opt):
-                    text = o.decode('utf-8', errors='ignore') if isinstance(o, bytes) else str(o)
-                    options.append({'text': text, 'value': str(idx)})
-              elif field_type == 'checkbox':
-                options = [
-                  {'text': '选中', 'value': 'Yes'},
-                  {'text': '未选中', 'value': 'Off'}
-                ]
-              # 字段值
-              field_value = field_obj.get('/V', '')
-              if isinstance(field_value, bytes):
-                field_value = field_value.decode('utf-8', errors='ignore')
-              # 组装
-              field = {
-                'name': field_name,
-                'type': field_type,
-                'value': field_value if field_value else '',
-                'options': options,
-                'button_info': None,
-                'attributes': {},
-                'page': 1,
-                'position': {'x': 0, 'y': 0, 'width': 0, 'height': 0},
-                'required': False
-              }
-              fields.append(field)
+      for field_name, field_value in fillpdf_fields.items():
+        field = {
+          'name': field_name,
+          'type': 'text',  # fillpdf的get_form_fields不返回类型信息，默认为text
+          'value': field_value if field_value else '',
+          'options': [],  # fillpdf的get_form_fields不返回选项信息
+          'button_info': None,
+          'attributes': {},
+          'page': 1,
+          'position': {'x': 0, 'y': 0, 'width': 0, 'height': 0},
+          'required': False
+        }
+        fields.append(field)
+      
+      # 清理临时文件
+      os.remove(temp_input_path)
+      
       return fields
+      
     except Exception as e:
-      logger.error(f'解析PDF表单字段失败: {str(e)}')
-      raise Exception(f'解析PDF表单字段失败: {str(e)}')
+      logger.error(f'使用fillpdf解析PDF表单字段失败: {str(e)}')
+      # 如果fillpdf失败，回退到PyPDF2方法
+      try:
+        import PyPDF2
+        from io import BytesIO
+        
+        logger.info('fillpdf解析失败，回退到PyPDF2方法...')
+        pdf_reader = PyPDF2.PdfReader(BytesIO(content))
+        fields = []
+        
+        if pdf_reader.trailer and '/Root' in pdf_reader.trailer:
+          root = pdf_reader.trailer['/Root'].get_object()
+          if root and '/AcroForm' in root:
+            acro_form = root['/AcroForm'].get_object()
+            if acro_form and '/Fields' in acro_form:
+              form_fields = acro_form['/Fields']
+              for field_ref in form_fields:
+                field_obj = field_ref.get_object()
+                # 字段名
+                field_name = field_obj.get('/T', '')
+                if isinstance(field_name, bytes):
+                  field_name = field_name.decode('utf-8', errors='ignore')
+                
+                if field_name:
+                  field = {
+                    'name': field_name,
+                    'type': 'text',
+                    'value': '',
+                    'options': [],
+                    'button_info': None,
+                    'attributes': {},
+                    'page': 1,
+                    'position': {'x': 0, 'y': 0, 'width': 0, 'height': 0},
+                    'required': False
+                  }
+                  fields.append(field)
+        
+        return fields
+        
+      except Exception as e2:
+        logger.error(f'PyPDF2回退解析也失败: {str(e2)}')
+        raise Exception(f'解析PDF表单字段失败: {str(e)}')
   async def fill_form(self, file: UploadFile, fields: List[Dict[str, Any]], strict_validation: bool = True) -> str:
     """
     填充PDF表单
@@ -155,8 +147,97 @@ class PDFServiceFillPDF:
       output_filename = f'filled_{uuid.uuid4().hex}_{file.filename}'
       output_path = os.path.join(settings.OUTPUT_DIR, output_filename)
       
-      # 使用fillpdf填充表单
-      fillpdfs.write_fillable_pdf(temp_input_path, output_path, field_values)
+      # 先尝试获取现有字段来理解字段结构，利用fillpdf的子字段支持
+      existing_fields = {}
+      final_field_values = field_values
+      
+      try:
+        existing_fields = fillpdfs.get_form_fields(temp_input_path)
+        logger.info(f'PDF中现有字段: {list(existing_fields.keys())}')
+        
+        # 检查是否需要字段名映射 - 但保留原始字段以支持隐藏/子字段
+        mapped_field_values = {}
+        for field_name, field_value in field_values.items():
+          # 直接匹配
+          if field_name in existing_fields:
+            mapped_field_values[field_name] = field_value
+            logger.debug(f'直接匹配字段: {field_name}')
+          else:
+            # 首先尝试保留原始字段名（fillpdf可能支持隐藏字段）
+            mapped_field_values[field_name] = field_value
+            logger.info(f'保留原始字段名（可能是隐藏/子字段）: {field_name}')
+            
+            # 尝试模糊匹配作为备选（去除空格、大小写等）
+            matched = False
+            for existing_field in existing_fields.keys():
+              if (field_name.lower().replace(' ', '') == 
+                  existing_field.lower().replace(' ', '')):
+                # 如果找到精确匹配，则替换原始字段名
+                mapped_field_values[existing_field] = field_value
+                mapped_field_values.pop(field_name, None)  # 移除原始字段名
+                logger.info(f'精确映射字段: "{field_name}" -> "{existing_field}"')
+                matched = True
+                break
+            
+            # 只有在严格验证模式下才报告未匹配字段为警告
+            if not matched and strict_validation:
+              logger.warning(f'严格模式下未找到匹配字段: {field_name}')
+            elif not matched:
+              logger.debug(f'保持原始字段名，让fillpdf处理: {field_name}')
+        
+        # 使用映射后的字段值
+        final_field_values = mapped_field_values
+        logger.info(f'最终字段值: {list(final_field_values.keys())}')
+        
+      except Exception as e:
+        logger.warning(f'获取现有字段失败: {str(e)}，使用原始字段值')
+
+      # 使用fillpdf填充表单（利用其子字段支持）
+      try:
+        fillpdfs.write_fillable_pdf(temp_input_path, output_path, final_field_values)
+        logger.info(f'使用fillpdf成功填充，支持子字段')
+      except AttributeError as e:
+        if "'NoneType' object has no attribute 'update'" in str(e):
+          logger.warning('PDF AcroForm结构问题，尝试修复后重试...')
+          # 尝试修复PDF结构后重新填充
+          import PyPDF2
+          from PyPDF2.generic import DictionaryObject
+          
+          # 读取并修复PDF
+          with open(temp_input_path, 'rb') as f:
+            reader = PyPDF2.PdfReader(f)
+            writer = PyPDF2.PdfWriter()
+            
+            # 复制所有页面
+            for page in reader.pages:
+              writer.add_page(page)
+            
+            # 确保AcroForm存在
+            if hasattr(writer, 'trailer') and writer.trailer and '/Root' in writer.trailer:
+              root = writer.trailer['/Root']
+              if '/AcroForm' not in root:
+                root['/AcroForm'] = DictionaryObject()
+                logger.info('创建缺失的AcroForm结构')
+          
+          # 保存修复后的PDF到临时文件
+          fixed_input_path = temp_input_path.replace('.pdf', '_fixed.pdf')
+          with open(fixed_input_path, 'wb') as f:
+            writer.write(f)
+          
+          # 使用修复后的PDF重试填充
+          try:
+            fillpdfs.write_fillable_pdf(fixed_input_path, output_path, final_field_values)
+            logger.info('使用修复PDF成功填充')
+            # 清理临时文件
+            os.remove(fixed_input_path)
+          except Exception as e2:
+            logger.error(f'修复PDF后仍然填充失败: {str(e2)}')
+            # 清理临时文件
+            if os.path.exists(fixed_input_path):
+              os.remove(fixed_input_path)
+            raise e2
+        else:
+          raise e
       
       # 清理临时文件
       os.remove(temp_input_path)
@@ -164,15 +245,9 @@ class PDFServiceFillPDF:
       logger.info(f'使用fillpdf填充PDF表单完成: {output_path}')
       return output_path
       
-    except Exception as e:
-      logger.error(f'填充PDF表单失败: {str(e)}')
-      raise Exception(f'填充PDF表单失败: {str(e)}')
-  
-      return valid_fields
-      
-    except Exception as e:
-      logger.warning(f'验证字段时发生错误: {str(e)}')
-      return field_values  # 如果出错，返回原始字段值
+    except Exception as outer_e:
+      logger.error(f'填充PDF表单失败: {str(outer_e)}')
+      raise Exception(f'填充PDF表单失败: {str(outer_e)}')
   
   async def fill_form_from_path(self, file_path: str, fields: List[Dict[str, Any]], strict_validation: bool = True) -> str:
     """
@@ -210,9 +285,9 @@ class PDFServiceFillPDF:
       logger.info(f'使用fillpdf填充PDF表单完成: {output_path}')
       return output_path
       
-    except Exception as e:
-      logger.error(f'填充PDF表单失败: {str(e)}')
-      raise Exception(f'填充PDF表单失败: {str(e)}')
+    except Exception as path_e:
+      logger.error(f'填充PDF表单失败: {str(path_e)}')
+      raise Exception(f'填充PDF表单失败: {str(path_e)}')
   
   async def _validate_and_remove_invalid_fields_from_path(self, file_path: str, field_values: Dict[str, str]) -> Dict[str, str]:
     """

@@ -399,9 +399,7 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                 if annotation[SUBTYPE_KEY] == WIDGET_SUBTYPE_KEY:
                     if annotation[ANNOT_FIELD_KEY]:
                         key = annotation[ANNOT_FIELD_KEY][1:-1]
-                        # 只有当字段不存在或当前值为空时，才设置新值
-                        if key not in data_dict or not data_dict[key]:
-                            data_dict[key] = ''
+                        data_dict[key] = ''
                         if annotation[ANNOT_VAL_KEY]:
                             value = annotation[ANNOT_VAL_KEY]
                             data_dict[key] = annotation[ANNOT_VAL_KEY]

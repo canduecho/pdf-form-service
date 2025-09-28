@@ -86,7 +86,8 @@ class PDFServiceEnhancedFillPDF:
                                     # Radio字段：text是选项文本，value是索引
                                     field_options = []
                                     for idx, opt in enumerate(options):
-                                        field_options.append({'text': opt, 'value': str(idx)})
+                                        value = has_kids[idx]["/AP"]["/N"].keys()[0].replace("/", "")
+                                        field_options.append({'text': opt, 'value': value})
                             else:
                                 field_type = 'checkbox'
                                 # 为checkbox字段创建固定选项（匹配enhanced引擎）

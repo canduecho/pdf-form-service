@@ -6,6 +6,25 @@ from PIL import Image
 from collections import OrderedDict
 
 from .utils.field_format import is_text_field_multiline, make_read_only
+def _safe_int_convert(value):
+    """
+    安全地将值转换为整数
+    """
+    if value is None:
+        return None
+    try:
+        if isinstance(value, int):
+            return value
+        elif hasattr(value, 'to_unicode'):
+            value_str = value.to_unicode()
+            if value_str.isdigit():
+                return _safe_int_convert(value_str)
+        elif isinstance(value, str) and value.isdigit():
+            return _safe_int_convert(value)
+        return None
+    except:
+        return None
+
 
 def _get_acroform_fields(pdf):
     """
@@ -19,10 +38,9 @@ def _get_acroform_fields(pdf):
         if not pdf.Root or not pdf.Root.AcroForm or not pdf.Root.AcroForm.Fields:
             return acroform_fields
         
-        # 遍历AcroForm字段树
+        # 遍历AcroForm字段树，使用改进的递归函数
         for field in pdf.Root.AcroForm.Fields:
-            # 直接使用field对象，不需要调用get_object()
-            _extract_field_recursive(field, acroform_fields)
+            _extract_field_recursive_improved(field, acroform_fields)
             
     except Exception as e:
         # 静默处理异常，不影响原有功能
@@ -76,8 +94,8 @@ def _extract_field_recursive(field_obj, result_dict, parent_name=""):
                 'has_options': '/Opt' in field_obj,
                 'has_kids': '/Kids' in field_obj and field_obj['/Kids'],
                 'options': [],
-                'flags': int(field_obj['/Ff']) if '/Ff' in field_obj and field_obj['/Ff'] else None,  # 添加标志位信息并转换为int
-                'max_length': int(field_obj['/MaxLen']) if '/MaxLen' in field_obj and field_obj['/MaxLen'] else None  # 添加最大长度
+                'flags': _safe_int_convert(field_obj.get('/Ff')) if '/Ff' in field_obj and field_obj['/Ff'] else None,  # 添加标志位信息并转换为int
+                'max_length': _safe_int_convert(field_obj.get('/MaxLen')) if '/MaxLen' in field_obj and field_obj['/MaxLen'] else None  # 添加最大长度
             }
             
             # 提取选项（用于下拉框、列表框）
@@ -103,7 +121,19 @@ def _extract_field_recursive(field_obj, result_dict, parent_name=""):
                 flags = field_obj.get('/Ff')
                 if field_type == '/Btn' and flags:
                     try:
-                        flags_int = int(flags) if isinstance(flags, int) else int(flags)
+                        # 安全转换flags为整数
+                        flags_int = 0
+                        try:
+                            if isinstance(flags, int):
+                                flags_int = flags
+                            elif hasattr(flags, 'to_unicode'):
+                                flags_str = flags.to_unicode()
+                                if flags_str.isdigit():
+                                    flags_int = _safe_int_convert(flags_str)
+                            elif isinstance(flags, str) and flags.isdigit():
+                                flags_int = _safe_int_convert(flags)
+                        except:
+                            flags_int = 0
                         is_radio = bool(flags_int & 32768)
                         
                         if is_radio and '/Kids' in field_obj and field_obj['/Kids']:
@@ -156,8 +186,8 @@ def _extract_field_recursive(field_obj, result_dict, parent_name=""):
                             'has_options': '/Opt' in field_obj,
                             'has_kids': True,
                             'options': [],
-                            'flags': int(field_obj['/Ff']) if '/Ff' in field_obj and field_obj['/Ff'] else None,
-                            'max_length': int(field_obj['/MaxLen']) if '/MaxLen' in field_obj and field_obj['/MaxLen'] else None
+                            'flags': _safe_int_convert(field_obj.get('/Ff')) if '/Ff' in field_obj and field_obj['/Ff'] else None,
+                            'max_length': _safe_int_convert(field_obj.get('/MaxLen')) if '/MaxLen' in field_obj and field_obj['/MaxLen'] else None
                         }
                         break  # 找到值后停止搜索其他子字段
                     except:
@@ -234,13 +264,19 @@ def _fill_field_recursive(field_obj, data_dict, parent_name=""):
                     is_radio = False
                     if flags:
                         try:
-                            # 转换PdfObject为整数
-                            if hasattr(flags, 'to_unicode'):
-                                flags_int = int(flags.to_unicode())
-                            elif isinstance(flags, str):
-                                flags_int = int(flags)
-                            else:
-                                flags_int = int(flags)
+                            # 安全转换PdfObject为整数
+                            flags_int = 0
+                            try:
+                                if hasattr(flags, 'to_unicode'):
+                                    flags_str = flags.to_unicode()
+                                    if flags_str.isdigit():
+                                        flags_int = _safe_int_convert(flags_str)
+                                elif isinstance(flags, str) and flags.isdigit():
+                                    flags_int = _safe_int_convert(flags)
+                                elif isinstance(flags, int):
+                                    flags_int = flags
+                            except:
+                                flags_int = 0
                             is_radio = bool(flags_int & 32768)
                         except:
                             is_radio = False
@@ -250,7 +286,9 @@ def _fill_field_recursive(field_obj, data_dict, parent_name=""):
                         if '/Opt' in field_obj and field_obj['/Opt']:
                             # 有选项的radio字段：根据值索引选择对应选项
                             try:
-                                value_index = int(field_value)
+                                value_index = _safe_int_convert(field_value)
+                                if value_index is None:
+                                    value_index = 0
                                 options = field_obj['/Opt']
                                 
                                 # 设置父字段值为选中的选项
@@ -392,7 +430,7 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                 count += 1
                 continue
             else:
-                print(f"Values From Page {page_number}")
+                pr_safe_int_convert(f"Values From Page {page_number}")
         annotations = page[ANNOT_KEY]
         if annotations:
             for annotation in annotations:
@@ -979,7 +1017,7 @@ def place_text(text, x, y, input_pdf_path, output_map_path, page_number, font_si
     """
     doc = fitz.open(input_pdf_path)
     page = doc[page_number-1]
-    page.insert_text(fitz.Point(x, y), str(text), fontname=font_name, color=color, fontsize=font_size)
+    page.insert_text(fitz.Po_safe_int_convert(x, y), str(text), fontname=font_name, color=color, fontsize=font_size)
     doc.save(output_map_path, **kwargs)
 
 
@@ -1006,12 +1044,89 @@ def get_coordinate_map(input_pdf_path, output_map_path, page_number=1, **kwargs)
     max_x = page.rect[2]
     max_y = page.rect[3]
         
-    for y in range(0, int(math.ceil(max_y / 50.0)) * 50, 50): # Drop a dot every 20 px x and y
-        page.insert_text(fitz.Point(0 , y), str(y), fontsize=12, fontname="times-bold", color=(1, 0, 0))
-        page.draw_line(fitz.Point(0 , y), fitz.Point(max_x , y), color=(1, 0, 0))
+    for y in range(0, _safe_int_convert(math.ceil(max_y / 50.0)) * 50, 50): # Drop a dot every 20 px x and y
+        page.insert_text(fitz.Po_safe_int_convert(0 , y), str(y), fontsize=12, fontname="times-bold", color=(1, 0, 0))
+        page.draw_line(fitz.Po_safe_int_convert(0 , y), fitz.Po_safe_int_convert(max_x , y), color=(1, 0, 0))
         
-    for x in range(0, int(math.ceil(max_x / 50.0)) * 50, 50):
-        page.insert_text(fitz.Point(x , 12), str(x), fontsize=12, fontname="times-bold", color=(1, 0, 0))
-        page.draw_line(fitz.Point(x , 12), fitz.Point(x , max_y), color=(1, 0, 0))
+    for x in range(0, _safe_int_convert(math.ceil(max_x / 50.0)) * 50, 50):
+        page.insert_text(fitz.Po_safe_int_convert(x , 12), str(x), fontsize=12, fontname="times-bold", color=(1, 0, 0))
+        page.draw_line(fitz.Po_safe_int_convert(x , 12), fitz.Po_safe_int_convert(x , max_y), color=(1, 0, 0))
     
     doc.save(output_map_path, **kwargs)
+
+def _extract_field_recursive_improved(field_obj, result_dict, parent_path=""):
+    """
+    改进的递归提取字段函数，能够处理深层嵌套结构
+    """
+    if not field_obj:
+        return
+    
+    try:
+        # 获取字段名
+        field_name = None
+        if '/T' in field_obj:
+            field_name = field_obj['/T']
+            if hasattr(field_name, 'to_unicode'):
+                field_name = field_name.to_unicode()
+            elif isinstance(field_name, str):
+                field_name = field_name.strip('()')
+            else:
+                field_name = str(field_name).strip('()')
+        
+        # 构建字段路径（用于调试）
+        current_path = f"{parent_path}.{field_name}" if parent_path and field_name else (field_name or parent_path)
+        
+        # 获取字段值
+        field_value = ""
+        if '/V' in field_obj:
+            try:
+                value = field_obj['/V']
+                if hasattr(value, 'to_unicode'):
+                    field_value = value.to_unicode()
+                elif hasattr(value, 'decode'):
+                    field_value = value.decode('utf-8', errors='ignore')
+                elif isinstance(value, str):
+                    field_value = value.strip('()')
+                else:
+                    field_value = str(value).strip('()')
+            except:
+                pass
+        
+        # 如果有字段名，添加到结果中
+        if field_name:
+            result_dict[field_name] = {
+                'value': field_value,
+                'type': field_obj.get('/FT') if '/FT' in field_obj else None,
+                'subtype': field_obj.get('/Subtype') if '/Subtype' in field_obj else None,
+                'has_options': '/Opt' in field_obj,
+                'has_kids': '/Kids' in field_obj and field_obj['/Kids'],
+                'options': [],
+                'flags': _safe_int_convert(field_obj.get('/Ff')) if '/Ff' in field_obj and field_obj['/Ff'] else None,
+                'max_length': _safe_int_convert(field_obj.get('/MaxLen')) if '/MaxLen' in field_obj and field_obj['/MaxLen'] else None,
+                'path': current_path  # 添加路径信息用于调试
+            }
+            
+            # 提取选项
+            if '/Opt' in field_obj and field_obj['/Opt']:
+                try:
+                    options = field_obj['/Opt']
+                    option_list = []
+                    for opt in options:
+                        if hasattr(opt, 'to_unicode'):
+                            option_list.append(opt.to_unicode())
+                        elif isinstance(opt, str):
+                            option_list.append(opt.strip('()'))
+                        else:
+                            option_list.append(str(opt).strip('()'))
+                    result_dict[field_name]['options'] = option_list
+                except:
+                    pass
+        
+        # 递归处理所有子字段
+        if '/Kids' in field_obj and field_obj['/Kids']:
+            for kid in field_obj['/Kids']:
+                _extract_field_recursive_improved(kid, result_dict, current_path)
+                
+    except Exception as e:
+        # 静默处理单个字段的异常
+        pass

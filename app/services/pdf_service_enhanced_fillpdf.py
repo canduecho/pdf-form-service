@@ -16,8 +16,11 @@ from app.custom_fillpdf import get_form_fields, write_fillable_pdf
 class PDFServiceEnhancedFillPDF:
     """增强版fillpdf PDF表单处理服务"""
     
+
     def __init__(self):
         self.name = "Enhanced FillPDF Service v3"
+        self._field_positions_cache = {}  # 缓存字段位置信息
+
         logger.info(f'初始化 {self.name}')
     
     async def parse_form_fields(self, file: UploadFile) -> List[Dict[str, Any]]:
@@ -33,7 +36,13 @@ class PDFServiceEnhancedFillPDF:
         try:
             # 保存临时文件
             temp_input_path = os.path.join(settings.TEMP_DIR, f'parse_{uuid.uuid4().hex}_{file.filename}')
+            
+            # 读取文件内容
             content = await file.read()
+            
+            # 检查文件内容是否为空
+            if not content:
+                raise Exception('上传的文件为空')
             
             with open(temp_input_path, 'wb') as f:
                 f.write(content)
@@ -153,6 +162,9 @@ class PDFServiceEnhancedFillPDF:
                     logger.debug(f'跳过按钮字段: {field_name}')
                     continue
                 
+                # 使用简单的页面推断逻辑
+                page_num = self._infer_page_number(field_name)
+                
                 field = {
                     'name': field_name,
                     'label': None,  # 添加label字段
@@ -163,7 +175,7 @@ class PDFServiceEnhancedFillPDF:
                     'attributes': field_attributes,
                     'is_subfield': is_subfield,
                     'subfield_info': subfield_info,
-                    'page': 1,
+                    'page': page_num,
                     'position': {'x': 0, 'y': 0, 'width': 0, 'height': 0},
                     'required': False
                 }
@@ -232,6 +244,16 @@ class PDFServiceEnhancedFillPDF:
                 pass
             raise Exception(f'填充PDF表单失败: {str(e)}')
     
+
+
+    def _infer_page_number(self, field_name: str) -> int:
+        """
+        简化版本：所有字段都返回页面1
+        """
+        return 1
+
+       
+
     async def create_sample_form(self) -> str:
         """
         创建示例表单（复用原有逻辑）

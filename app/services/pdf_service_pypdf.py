@@ -158,12 +158,17 @@ class PDFServicePyPDF:
                     default_value = dv.decode('utf-8', errors='ignore')
                 else:
                     default_value = str(dv) if dv else ''
+            # filter button field
+            if field_type == 'button':
+                return None
             
             return {
                 'name': field_name,
+                'label': '',
                 'type': field_type,
                 'value': field_value,
-                'default_value': default_value,
+                # 'default_value': default_value,
+                "button_info":None,
                 'options': options,
                 'page': 1,  # PyPDF2的get_fields()不提供页面信息
                 'position': None,

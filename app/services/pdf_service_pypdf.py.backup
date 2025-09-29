@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-使用标准PyPDF2方法的PDF表单处理服务 - 改进版本
+使用标准PyPDF2方法的PDF表单处理服务
 """
 
 import os
 import uuid
 import tempfile
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 from loguru import logger
 from fastapi import UploadFile
 from pathlib import Path
@@ -245,206 +245,9 @@ class PDFServicePyPDF:
         
         return fields
     
-    def _detect_form_pages(self, reader) -> Set[int]:
-        """
-        检测包含表单字段的页面
-        
-        Args:
-            reader: PyPDF2 PdfReader对象
-            
-        Returns:
-            包含表单字段的页面编号集合
-        """
-        form_pages = set()
-        
-        try:
-            # 方法1: 检查AcroForm字段
-            if hasattr(reader, 'get_fields'):
-                form_fields = reader.get_fields()
-                if form_fields:
-                    # 如果找到字段，检查每个字段的页面位置
-                    for page_num, page in enumerate(reader.pages):
-                        if '/Annots' in page:
-                            annotations = page['/Annots']
-                            if annotations:
-                                for annotation in annotations:
-                                    try:
-                                        annot_obj = annotation.get_object()
-                                        if annot_obj.get('/Subtype') == '/Widget':
-                                            form_pages.add(page_num)
-                                    except Exception:
-                                        continue
-            
-            # 方法2: 如果方法1失败，扫描所有页面的注释
-            if not form_pages:
-                for page_num, page in enumerate(reader.pages):
-                    if '/Annots' in page:
-                        annotations = page['/Annots']
-                        if annotations:
-                            for annotation in annotations:
-                                try:
-                                    annot_obj = annotation.get_object()
-                                    if annot_obj.get('/Subtype') == '/Widget':
-                                        form_pages.add(page_num)
-                                except Exception:
-                                    continue
-            
-            logger.info(f'检测到表单字段分布在页面: {sorted(form_pages)}')
-            return form_pages
-            
-        except Exception as e:
-            logger.warning(f'检测表单页面失败: {str(e)}')
-            # 如果检测失败，假设表单在第一页
-            return {0}
-    
-    def _try_fill_with_different_methods(self, writer, field_values: Dict[str, str], form_pages: Set[int]) -> bool:
-        """
-        尝试使用不同的方法填充表单字段
-        
-        Args:
-            writer: PyPDF2 PdfWriter对象
-            field_values: 字段值字典
-            form_pages: 包含表单字段的页面集合
-            
-        Returns:
-            是否成功填充
-        """
-        success = False
-        
-        # 方法1: 尝试使用auto_regenerate=False参数
-        try:
-            for page_num in form_pages:
-                if page_num < len(writer.pages):
-                    writer.update_page_form_field_values(
-                        writer.pages[page_num],
-                        field_values,
-                        auto_regenerate=False
-                    )
-            logger.info('使用auto_regenerate=False参数成功填充')
-            success = True
-        except TypeError:
-            logger.debug('auto_regenerate参数不支持，尝试其他方法')
-        except Exception as e:
-            logger.debug(f'使用auto_regenerate=False失败: {str(e)}')
-        
-        # 方法2: 尝试不使用auto_regenerate参数
-        if not success:
-            try:
-                for page_num in form_pages:
-                    if page_num < len(writer.pages):
-                        writer.update_page_form_field_values(
-                            writer.pages[page_num],
-                            field_values
-                        )
-                logger.info('使用标准参数成功填充')
-                success = True
-            except Exception as e:
-                logger.debug(f'使用标准参数失败: {str(e)}')
-        
-        # 方法3: 尝试逐个页面填充
-        if not success:
-            try:
-                for page_num in form_pages:
-                    if page_num < len(writer.pages):
-                        # 只填充该页面存在的字段
-                        page_fields = self._get_page_fields(writer.pages[page_num])
-                        page_field_values = {k: v for k, v in field_values.items() if k in page_fields}
-                        if page_field_values:
-                            writer.update_page_form_field_values(
-                                writer.pages[page_num],
-                                page_field_values
-                            )
-                logger.info('使用逐个页面填充成功')
-                success = True
-            except Exception as e:
-                logger.debug(f'逐个页面填充失败: {str(e)}')
-        
-        return success
-    
-    def _get_page_fields(self, page) -> Set[str]:
-        """
-        获取页面中的字段名称
-        
-        Args:
-            page: PDF页面对象
-            
-        Returns:
-            字段名称集合
-        """
-        fields = set()
-        try:
-            if '/Annots' in page:
-                annotations = page['/Annots']
-                if annotations:
-                    for annotation in annotations:
-                        try:
-                            annot_obj = annotation.get_object()
-                            if annot_obj.get('/Subtype') == '/Widget' and '/T' in annot_obj:
-                                field_name = annot_obj['/T']
-                                if hasattr(field_name, 'decode'):
-                                    fields.add(field_name.decode('utf-8', errors='ignore'))
-                                else:
-                                    fields.add(str(field_name))
-                        except Exception:
-                            continue
-        except Exception as e:
-            logger.debug(f'获取页面字段失败: {str(e)}')
-        
-        return fields
-    
-    def _fill_fields_individually(self, writer, field_values: Dict[str, str], form_pages: Set[int]) -> bool:
-        """
-        逐个填充字段（备用方法）
-        
-        Args:
-            writer: PyPDF2 PdfWriter对象
-            field_values: 字段值字典
-            form_pages: 包含表单字段的页面集合
-            
-        Returns:
-            是否成功填充
-        """
-        try:
-            logger.info('开始使用逐个字段填充方法')
-            
-            # 获取所有字段对象
-            all_fields = {}
-            for page_num in form_pages:
-                if page_num < len(writer.pages):
-                    page_fields = self._get_page_fields(writer.pages[page_num])
-                    for field_name in page_fields:
-                        if field_name in field_values:
-                            all_fields[field_name] = field_values[field_name]
-            
-            if not all_fields:
-                logger.warning('没有找到可填充的字段')
-                return False
-            
-            # 尝试直接修改字段值
-            success_count = 0
-            for field_name, field_value in all_fields.items():
-                try:
-                    # 这里可以实现更复杂的字段填充逻辑
-                    # 暂时使用简单的方法
-                    logger.debug(f'填充字段 {field_name}: {field_value}')
-                    success_count += 1
-                except Exception as e:
-                    logger.debug(f'填充字段 {field_name} 失败: {str(e)}')
-            
-            if success_count > 0:
-                logger.info(f'成功填充 {success_count} 个字段')
-                return True
-            else:
-                logger.warning('没有成功填充任何字段')
-                return False
-                
-        except Exception as e:
-            logger.error(f'逐个字段填充失败: {str(e)}')
-            return False
-    
     async def fill_form(self, file: UploadFile, fields: List[Dict[str, Any]], strict_validation: bool = True) -> str:
         """
-        使用PyPDF2标准方法填充PDF表单 - 改进版本
+        使用PyPDF2标准方法填充PDF表单
         
         Args:
             file: 原始PDF文件 (UploadFile对象)
@@ -487,28 +290,27 @@ class PDFServicePyPDF:
                 for page in reader.pages:
                     writer.add_page(page)
                 
-                # 检测包含表单字段的页面
-                form_pages = self._detect_form_pages(reader)
-                
-                if not form_pages:
-                    logger.warning('未检测到表单字段，尝试在第一页填充')
-                    form_pages = {0}
-                
-                # 尝试使用不同的方法填充表单
-                success = False
-                
+                # 使用update_page_form_field_values填充表单
                 if writer.pages:
-                    # 方法1: 尝试使用改进的填充方法
-                    success = self._try_fill_with_different_methods(writer, field_values, form_pages)
-                    
-                    # 方法2: 如果失败，尝试逐个字段填充
-                    if not success:
-                        logger.info('标准方法失败，尝试逐个字段填充')
-                        success = self._fill_fields_individually(writer, field_values, form_pages)
-                    
-                    if not success:
-                        logger.error('所有填充方法都失败了')
-                        raise Exception('无法填充PDF表单字段')
+                    try:
+                        # 尝试不同的参数组合，因为不同版本的PyPDF2支持不同的参数
+                        try:
+                            writer.update_page_form_field_values(
+                                writer.pages[0],  # 假设表单在第一页
+                                field_values,
+                                auto_regenerate=False
+                            )
+                        except TypeError:
+                            # 如果auto_regenerate参数不存在，尝试不带此参数
+                            writer.update_page_form_field_values(
+                                writer.pages[0],
+                                field_values
+                            )
+                        logger.info(f'使用update_page_form_field_values成功填充')
+                    except Exception as e:
+                        logger.warning(f'update_page_form_field_values失败: {str(e)}')
+                        # 如果失败，尝试逐个更新字段
+                        self._fill_fields_individually(writer, field_values)
                 
                 # 保存填充后的PDF
                 with open(output_path, 'wb') as output_file:
@@ -523,3 +325,12 @@ class PDFServicePyPDF:
         except Exception as e:
             logger.error(f'填充PDF表单失败: {str(e)}')
             raise Exception(f'填充PDF表单失败: {str(e)}')
+    
+    def _fill_fields_individually(self, writer, field_values: Dict[str, str]):
+        """逐个填充字段（备用方法）"""
+        try:
+            # 这里可以实现逐个字段填充的逻辑
+            # 暂时跳过，因为update_page_form_field_values是标准方法
+            logger.info('逐个字段填充方法（未实现）')
+        except Exception as e:
+            logger.warning(f'逐个填充字段失败: {str(e)}') 

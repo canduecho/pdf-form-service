@@ -430,7 +430,8 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                 count += 1
                 continue
             else:
-                pr_safe_int_convert(f"Values From Page {page_number}")
+                print(f"Values From Page {page_number}")
+                # pr_safe_int_convert(f"Values From Page {page_number}")
         annotations = page[ANNOT_KEY]
         if annotations:
             for annotation in annotations:

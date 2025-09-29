@@ -242,7 +242,7 @@ class PDFServiceEnhancedFillPDF:
                     os.remove(temp_input_path)
             except:
                 pass
-            raise Exception(f'填充PDF表单失败: {str(e)}')
+            raise Exception(f'增强fillpdf填充PDF表单失败: {str(e)}')
     
 
 

@@ -162,6 +162,10 @@ class PDFServicePyPDF:
             if field_type == 'button':
                 return None
             
+            if field_type == 'checkbox' or field_type == 'radio':
+                field_value = field_value.replace("/", "")
+                field_value = field_value.replace("\\", "")
+            
             return {
                 'name': field_name,
                 'label': '',

@@ -195,7 +195,23 @@ async def fill_pdf_form(
     elif engine == "enhanced_fillpdf":
       # 使用增强版 fillpdf 引擎 - 支持所有字段类型和子字段
       logger.info('使用增强版fillpdf引擎填充表单（支持所有字段类型和子字段）')
-      output_path = await pdf_service_enhanced_fillpdf.fill_form(file, fields_data, strict_validation)
+      try:
+        output_path = await pdf_service_enhanced_fillpdf.fill_form(file, fields_data, strict_validation)
+        logger.info(f'增强版fillpdf引擎填充成功: {output_path}')
+      except Exception as e:
+        logger.warning(f'增强版fillpdf引擎填充失败: {str(e)}')
+        logger.info('自动切换到standard引擎进行填充')
+        try:
+          # 重置文件指针到开始位置
+          await file.seek(0)
+          output_path = await pdf_service_pypdf.fill_form(file, fields_data, strict_validation)
+          logger.info(f'standard引擎填充成功: {output_path}')
+          # 更新引擎名称以反映实际使用的引擎
+          engine = 'enhanced_fillpdf_fallback_to_standard'
+        except Exception as fallback_e:
+          logger.error(f'standard引擎也填充失败: {str(fallback_e)}')
+          # 抛出fallback错误而不是原始错误
+          raise fallback_e
     else:
       raise HTTPException(status_code=400, detail=f'不支持的引擎类型: {engine}')
     

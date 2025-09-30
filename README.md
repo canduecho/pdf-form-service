@@ -89,6 +89,13 @@ python main.py
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+### podman 安装
+```bash
+podman build -t 132.148.160.89/library/wcl/pdf-form-service:latest . 
+podman push --tls-verify=false 132.148.160.89/library/wcl/pdf-form-service:latest
+```
+
+
 ## API 接口
 
 ### 1. 解析 PDF 表单字段

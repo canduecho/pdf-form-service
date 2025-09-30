@@ -8,9 +8,26 @@ from collections import OrderedDict
 from .utils.field_format import is_text_field_multiline, make_read_only
 def _safe_int_convert(value):
     """
-    安全地将值转换为整数
+    安全地将值转换为整数 - 修复版本
     """
     if value is None:
+        return None
+    try:
+        if isinstance(value, int):
+            return value
+        elif hasattr(value, 'to_unicode'):
+            value_str = value.to_unicode()
+            if value_str.isdigit():
+                return int(value_str)
+        elif isinstance(value, str) and value.isdigit():
+            return int(value)
+        # 添加对PdfObject的处理
+        elif hasattr(value, '__int__'):
+            return int(value)
+        # 尝试直接转换
+        else:
+            return int(value)
+    except:
         return None
     try:
         if isinstance(value, int):

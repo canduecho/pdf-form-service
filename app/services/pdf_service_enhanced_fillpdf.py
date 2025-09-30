@@ -91,12 +91,17 @@ class PDFServiceEnhancedFillPDF:
                             elif flags & 32768:  # Radio button flag
                                 field_type = 'radio'
                                 # 为radio字段创建选项（匹配enhanced引擎）
+                                field_options = []
                                 if has_options and options:
-                                    # Radio字段：text是选项文本，value是索引
-                                    field_options = []
                                     for idx, opt in enumerate(options):
                                         value = has_kids[idx]["/AP"]["/N"].keys()[0].replace("/", "")
                                         field_options.append({'text': opt, 'value': value})
+                                        
+                                if has_kids and len(field_options) == 0:
+                                    # Radio字段：text是选项文本，value是索引                                   
+                                    for idx, opt in enumerate(has_kids):
+                                        value = has_kids[idx]["/AP"]["/N"].keys()[0].replace("/", "")
+                                        field_options.append({'text': value, 'value': value})
                             else:
                                 field_type = 'checkbox'
                                 # 为checkbox字段创建固定选项（匹配enhanced引擎）

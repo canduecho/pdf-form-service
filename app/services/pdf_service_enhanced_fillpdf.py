@@ -74,7 +74,8 @@ class PDFServiceEnhancedFillPDF:
                     flags = field_info.get('flags')
                     
                     # 使用增强信息中的实际值（而不是fillpdf返回的值）
-                    if field_info.get('value'):
+                    # 注意：即使值为空，也要处理（特别是对于复选框的 Off 状态）
+                    if 'value' in field_info:
                         field_value = field_info.get('value')
                         
                         # 处理值格式（匹配enhanced引擎）
@@ -168,7 +169,25 @@ class PDFServiceEnhancedFillPDF:
                     continue
                 
                 # 使用简单的页面推断逻辑
-                page_num = self._infer_page_number(field_name)
+                page_num = enhanced_info[field_name]['page_index'] # self._infer_page_number(field_name)
+                rect = enhanced_info[field_name]['rect']
+                
+                # 转换 rect 为数字（rect 是 PDF 对象数组）
+                try:
+                    # rect 格式: [x1, y1, x2, y2]
+                    x1 = float(str(rect[0]))
+                    y1 = float(str(rect[1]))
+                    x2 = float(str(rect[2]))
+                    y2 = float(str(rect[3]))
+                    position = {
+                        'x': x1, 
+                        'y': y1, 
+                        'width': x2 - x1, 
+                        'height': y2 - y1
+                    }
+                except (ValueError, TypeError, IndexError):
+                    # 如果转换失败，使用默认值
+                    position = {'x': 0, 'y': 0, 'width': 0, 'height': 0}
                 
                 field = {
                     'name': field_name,
@@ -178,10 +197,10 @@ class PDFServiceEnhancedFillPDF:
                     'options': field_options if field_options else None,  # 匹配enhanced引擎格式
                     'button_info': None,
                     'attributes': field_attributes,
-                    'is_subfield': is_subfield,
+                    'is_subfield': is_subfield, 
                     'subfield_info': subfield_info,
                     'page': page_num,
-                    'position': {'x': 0, 'y': 0, 'width': 0, 'height': 0},
+                    'position': position,
                     'required': False
                 }
                 fields.append(field)
@@ -347,17 +366,31 @@ class PDFServiceEnhancedFillPDF:
         Returns:
             处理后的值
         """
+        # 对于按钮字段（复选框和单选按钮），需要特殊处理
+        if field_type == '/Btn':
+            # 如果值为 None 或空字符串，表示未选中
+            if value is None or value == '':
+                return 'Off'
+            
+            value_str = str(value).strip()
+            
+            # 去掉开头的 "/"
+            if value_str.startswith('/'):
+                value_str = value_str[1:]
+            
+            # 标准化复选框值
+            # 将常见的选中状态统一转换为 "Yes"
+            if value_str in ['On', '1', '2', '3', '4', '5', 'Yes']:
+                return 'Yes'
+            # 将未选中状态统一为 "Off"
+            elif value_str in ['Off', '0', '']:
+                return 'Off'
+            
+            # 其他值原样返回（可能是 radio 的特殊值）
+            return value_str
+        
+        # 对于非按钮字段
         if not value:
             return ''
         
-        value_str = str(value).strip()
-        
-        # 处理按钮字段（复选框和单选按钮）：去掉开头的 "/"
-        if field_type == '/Btn' and isinstance(value_str, str) and value_str.startswith('/'):
-            value_str = value_str[1:]
-        
-        # 处理按钮字段：将 "On" 转换为 "Yes"
-        if field_type == '/Btn' and isinstance(value_str, str) and value_str == 'On':
-            value_str = 'Yes'
-        
-        return value_str 
+        return str(value).strip() 

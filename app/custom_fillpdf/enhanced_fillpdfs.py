@@ -90,7 +90,7 @@ def _extract_field_recursive(field_obj, result_dict, parent_name=""):
         
         # 获取字段值
         field_value = ""
-        if '/V' in field_obj:
+        if '/V' in field_obj and field_obj['/V']:
             try:
                 value = field_obj['/V']
                 if hasattr(value, 'decode'):
@@ -99,6 +99,18 @@ def _extract_field_recursive(field_obj, result_dict, parent_name=""):
                     field_value = value.strip('()')
                 else:
                     field_value = str(value).strip('()')
+            except:
+                pass
+        # 如果 /V 为空，对于按钮字段，从 /AS (外观状态) 读取值
+        elif '/AS' in field_obj and field_obj['/AS'] and field_obj.get('/FT') == '/Btn':
+            try:
+                as_value = field_obj['/AS']
+                if hasattr(as_value, 'to_unicode'):
+                    field_value = as_value.to_unicode().strip('/')
+                elif isinstance(as_value, str):
+                    field_value = as_value.strip('()/')
+                else:
+                    field_value = str(as_value).strip('()/')
             except:
                 pass
         
@@ -427,8 +439,9 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
     A dictionary of form fields and their filled values.
     """
     data_dict = {}
-
+    extend_data_dict={}
     pdf = pdfrw.PdfReader(input_pdf_path)
+    page_index = 0
     count = 1
     if page_number is not None:
         if type(page_number) == int:
@@ -442,6 +455,7 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
         else:
             raise ValueError(f"page_number must be an int")
     for page in pdf.pages:
+        page_index += 1
         if page_number is not None:
             if count != page_number:
                 count += 1
@@ -455,9 +469,16 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                 if annotation[SUBTYPE_KEY] == WIDGET_SUBTYPE_KEY:
                     if annotation[ANNOT_FIELD_KEY]:
                         key = annotation[ANNOT_FIELD_KEY][1:-1]
+                        
+                        extend_data_dict[key] ={"page_index": page_index, "rect": annotation[ANNOT_RECT_KEY]}
+                        if key.startswith('toggle'):
+                            print(f'key: {key}')
+                            
                         # 只有当字段不存在或当前值为空时，才设置新值
                         if key not in data_dict or not data_dict[key]:
                             data_dict[key] = ''
+                        
+                        # 尝试从 /V 字段获取值
                         if annotation[ANNOT_VAL_KEY]:
                             value = annotation[ANNOT_VAL_KEY]
                             data_dict[key] = annotation[ANNOT_VAL_KEY]
@@ -469,10 +490,26 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                                         data_dict[key] = annotation[ANNOT_VAL_KEY][1:]
                             except:
                                 pass
+                        # 如果 /V 为空，对于按钮字段，从 /AS (外观状态) 读取值
+                        elif annotation.get('/AS') and annotation.get('/FT') == '/Btn':
+                            try:
+                                as_value = annotation['/AS']
+                                if type(as_value) == pdfrw.objects.pdfname.BasePdfName:
+                                    if '/' in str(as_value):
+                                        data_dict[key] = str(as_value)[1:]
+                                    else:
+                                        data_dict[key] = str(as_value)
+                                else:
+                                    data_dict[key] = str(as_value)
+                            except:
+                                pass
                     elif annotation['/AP']:
                         if not annotation['/T']:
                             annotation = annotation['/Parent']
                         key = annotation['/T'].to_unicode()
+                        
+                        extend_data_dict[key] ={"page_index": page_index, "rect": annotation[ANNOT_RECT_KEY]}
+                        
                         data_dict[key] = annotation[ANNOT_VAL_KEY]
                         try:
                             if type(annotation[ANNOT_VAL_KEY]) == pdfrw.objects.pdfstring.PdfString:
@@ -500,6 +537,12 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                 acroform_value = enhanced_data_dict[field_name]['value']
                 has_kids = enhanced_data_dict[field_name].get('has_kids', False)
                 
+                page_index = extend_data_dict[field_name]['page_index']
+                rect = extend_data_dict[field_name]['rect']
+                enhanced_data_dict[field_name]['page_index'] = page_index
+                enhanced_data_dict[field_name]['rect'] = rect
+                
+                
                 # 对于有子字段的父字段，优先使用AcroForm提取的值（可能从子字段获取）
                 # 对于普通字段，优先使用原始fillpdf的值（更准确）
                 if has_kids and acroform_value:
@@ -508,6 +551,7 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                 else:
                     # 使用原始fillpdf的值
                     enhanced_data_dict[field_name]['value'] = field_value
+                    
             else:
                 # 如果AcroForm没有这个字段，创建基本信息
                 enhanced_data_dict[field_name] = {
@@ -518,7 +562,9 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                     'has_kids': False,
                     'options': [],
                     'flags': None,
-                    'max_length': None
+                    'max_length': None,
+                    'page_index': extend_data_dict[field_name]['page_index'],
+                    'rect': extend_data_dict[field_name]['rect']
                 }
         
         # 使用增强的数据字典
@@ -546,7 +592,12 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
     
     for field_name, field_info in data_dict.items():
         if isinstance(field_info, dict):
-            result_dict[field_name] = field_info['value']
+            if (field_info.get('page_index') is None):
+                field_info['page_index'] = 1
+            if (field_info.get('rect') is None):
+                field_info['rect'] = [0, 0, 0, 0]
+                
+            result_dict[field_name] = field_info['value']            
             enhanced_info[field_name] = field_info  # 保存完整信息
         else:
             result_dict[field_name] = field_info

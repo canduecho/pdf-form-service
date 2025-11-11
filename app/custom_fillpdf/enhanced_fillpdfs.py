@@ -348,20 +348,23 @@ def _fill_field_recursive(field_obj, data_dict, parent_name=""):
                                 field_obj[pdfrw.PdfName.V] = pdfrw.PdfName.Off
                                 field_obj[pdfrw.PdfName.AS] = pdfrw.PdfName.Off
                         else:
-                            # 没有选项的radio字段：直接设置值
+                            # 没有选项的radio字段：根据索引从子字段外观中提取实际值
                             try:
                                 # 设置父字段值
-                                field_obj[pdfrw.PdfName.V] = pdfrw.PdfString.encode(str(field_value))
-                                field_obj[pdfrw.PdfName.AS] = pdfrw.PdfString.encode(str(field_value))
+                                # field_obj[pdfrw.PdfName.V] = pdfrw.PdfString.encode(str(field_value))
+                                # field_obj[pdfrw.PdfName.AS] = pdfrw.PdfString.encode(str(field_value))
                                 
                                 # 处理子字段：所有子字段都设置为相同值
                                 if '/Kids' in field_obj and field_obj['/Kids']:
                                     for kid in field_obj['/Kids']:
                                         try:
                                             optionValue = kid["/AP"]["/N"].keys()[0].replace("/", "")
-                                            if optionValue == field_value:
-                                                kid[pdfrw.PdfName.V] = "/" + field_value
-                                                kid[pdfrw.PdfName.AS] = "/" + field_value
+                                            # 修复：将两者都转换为字符串进行比较
+                                            if str(optionValue) == str(field_value):
+                                                # 修复：确保 field_value 被转换为字符串
+                                                value_str = str(field_value)
+                                                kid[pdfrw.PdfName.V] = pdfrw.PdfName(value_str)
+                                                kid[pdfrw.PdfName.AS] = pdfrw.PdfName(value_str)
                                             else:
                                                 kid[pdfrw.PdfName.V] = pdfrw.PdfName.Off
                                                 kid[pdfrw.PdfName.AS] = pdfrw.PdfName.Off

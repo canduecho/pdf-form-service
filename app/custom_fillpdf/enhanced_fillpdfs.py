@@ -358,8 +358,13 @@ def _fill_field_recursive(field_obj, data_dict, parent_name=""):
                                 if '/Kids' in field_obj and field_obj['/Kids']:
                                     for kid in field_obj['/Kids']:
                                         try:
-                                            kid[pdfrw.PdfName.V] = pdfrw.PdfString.encode(str(field_value))
-                                            kid[pdfrw.PdfName.AS] = pdfrw.PdfString.encode(str(field_value))
+                                            optionValue = kid["/AP"]["/N"].keys()[0].replace("/", "")
+                                            if optionValue == field_value:
+                                                kid[pdfrw.PdfName.V] = "/" + field_value
+                                                kid[pdfrw.PdfName.AS] = "/" + field_value
+                                            else:
+                                                kid[pdfrw.PdfName.V] = pdfrw.PdfName.Off
+                                                kid[pdfrw.PdfName.AS] = pdfrw.PdfName.Off
                                         except:
                                             pass
                             except:
@@ -470,9 +475,11 @@ def get_form_fields(input_pdf_path, sort=False, page_number=None):
                     if annotation[ANNOT_FIELD_KEY]:
                         key = annotation[ANNOT_FIELD_KEY][1:-1]
                         
+                        # print(f"key: {key}, page_index: {page_index} ")
+                        
                         extend_data_dict[key] ={"page_index": page_index, "rect": annotation[ANNOT_RECT_KEY]}
-                        if key.startswith('toggle'):
-                            print(f'key: {key}')
+                        # if key.startswith('toggle'):
+                        #     print(f'key: {key}')
                             
                         # 只有当字段不存在或当前值为空时，才设置新值
                         if key not in data_dict or not data_dict[key]:
@@ -1163,6 +1170,13 @@ def _extract_field_recursive_improved(field_obj, result_dict, parent_path=""):
         
         # 如果有字段名，添加到结果中
         if field_name:
+            # # DEBUG: 打印 RadioButtonList[0] 的处理
+            # if 'RadioButtonList' in field_name:
+            #     if field_name in result_dict:
+            #         print(f'[_extract_field_recursive_improved] 字段: {field_name}, value={repr(field_value)}, path={current_path}')
+            #     else:
+            #         print(f'[_extract_field_recursive_improved] 字段: {field_name}, value={repr(field_value)}, path={current_path}')
+            
             result_dict[field_name] = {
                 'value': field_value,
                 'type': field_obj.get('/FT') if '/FT' in field_obj else None,

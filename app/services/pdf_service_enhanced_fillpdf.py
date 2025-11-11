@@ -71,7 +71,7 @@ class PDFServiceEnhancedFillPDF:
                     has_options = field_info.get('has_options', False)
                     has_kids = field_info.get('has_kids', False)
                     options = field_info.get('options', [])
-                    flags = field_info.get('flags')
+                    flags = field_info.get('flags', 0)
                     
                     # 使用增强信息中的实际值（而不是fillpdf返回的值）
                     # 注意：即使值为空，也要处理（特别是对于复选框的 Off 状态）
@@ -79,7 +79,7 @@ class PDFServiceEnhancedFillPDF:
                         field_value = field_info.get('value')
                         
                         # 处理值格式（匹配enhanced引擎）
-                        field_value = self._process_field_value(field_value, ft)
+                        field_value = self._process_field_value(field_value, ft, flags)
                     
                     # 根据PDF字段类型映射到我们的类型系统（支持combobox/listbox）
                     if ft == '/Tx':
@@ -355,7 +355,7 @@ class PDFServiceEnhancedFillPDF:
         
         return flag_meanings
     
-    def _process_field_value(self, value: str, field_type: str) -> str:
+    def _process_field_value(self, value: str, field_type: str, flags: int) -> str:
         """
         处理字段值格式（匹配enhanced引擎）
         
@@ -377,6 +377,11 @@ class PDFServiceEnhancedFillPDF:
             # 去掉开头的 "/"
             if value_str.startswith('/'):
                 value_str = value_str[1:]
+            
+            if flags and isinstance(flags, int):
+                if flags & 32768:  # Radio button flag
+                    return value_str
+                
             
             # 标准化复选框值
             # 将常见的选中状态统一转换为 "Yes"
